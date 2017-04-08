@@ -5,13 +5,19 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif // _GNU_SOURCE
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <mutex>
+#include <sstream>
+#include <string>
+#include <regex>
 #include <thread>
 
 #include <ftw.h>
@@ -27,8 +33,9 @@ unboundedQueue<string> bq;
 mutex donemtx;
 condition_variable donecv;
 
-int worker( int mytid, unboundedQueue<string>* q, atomic<int>* dc );
-int process_file(const char *name, const struct stat *status, int type, struct FTW *fb);
+void worker( int mytid, unboundedQueue<string>* q, atomic<int>* dc );
+int ntfw_process_file(const char *name, const struct stat *status, int type, struct FTW *fb);
+void worker_process_file( int mytid, const string& name );
 
 void display_help( const char* fname, ostream& os ) {
     os << "Usage: " << basename(fname) << " -N <num> [-d] [-h]" << endl
@@ -37,7 +44,6 @@ void display_help( const char* fname, ostream& os ) {
        << "     -d       : Enable debugging" << endl;
 }
 int main( int argc, char** argv ) {
-    int help = false;
     int c;
     int option_index = 0;
     int nthreads = 0;
@@ -83,7 +89,7 @@ int main( int argc, char** argv ) {
     }
 
     for( ; optind < argc; ++optind ) {
-        if ( nftw( argv[optind], process_file, 32, 0 ) < 0 ) {
+        if ( nftw( argv[optind], ntfw_process_file, 32, 0 ) < 0 ) {
             cerr << "Error processing directory " << argv[optind] << ": "
                  << strerror( errno ) << endl;
         }
@@ -104,7 +110,7 @@ int main( int argc, char** argv ) {
     return 0;
 }
 
-int process_file(const char *name, const struct stat *status, int type, struct FTW *fb) {
+int ntfw_process_file(const char *name, const struct stat *status, int type, struct FTW *fb) {
     if ( type != FTW_F ) return 0;
 
     int l = strlen(name);
@@ -123,16 +129,46 @@ int process_file(const char *name, const struct stat *status, int type, struct F
 }
 
 //int worker( int mytid, unboundedQueue<string>* q, atomic<int>* dc );
-int worker( int mytid, unboundedQueue<string>* q, atomic<int>* done ) {
+void worker( int mytid, unboundedQueue<string>* q, atomic<int>* done ) {
     string s;
     debug && cout << "[" << mytid << "]" << " Starting..." << endl;
     s = q->deq();
     while( s.length() > 0 ) {
         debug && cout << "[" << mytid << "]" << " Processing " << s << endl;
         
+        worker_process_file( mytid, s );
         s = q->deq();
     }
     done->fetch_add(1);
     unique_lock<mutex> dlg(donemtx);        
     donecv.notify_all();
+}
+
+void worker_process_file( int mytid, const string& name ) {
+    static const regex re_word( "[[:alnum:]]+" );
+    static const regex_iterator<string::iterator> re_end;
+
+    ifstream infile( name );
+    if ( !infile.good() ) {
+        ostringstream os;
+        os << "[" << mytid << "] Cannot open: " << name << ": " << strerror(errno) << endl;
+        cout << os.str();
+        return;
+    }
+
+    string line;
+    // Prime the loop
+    getline( infile, line );
+    while( infile.good() ) {
+        debug && cout << "[" << mytid << "] Got line: " << line << endl;
+        regex_iterator<string::iterator> rit( line.begin(), line.end(), re_word );
+        while( rit != re_end ) {
+            string word(std::move(rit->str()));
+            transform( word.begin(), word.end(), word.begin(), ::tolower );
+            debug && cout << "[" << mytid << "] Got word: " << word << endl;
+            ++rit;
+        }
+        // Read the next line and... go!
+        getline( infile, line );
+    }
 }

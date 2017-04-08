@@ -26,7 +26,7 @@ namespace kjp {
 
             Node() : next(nullptr) {}
             Node( const T& val ) : 
-                next(nullptr), value(val) {}
+                value(val), next(nullptr) {}
             ~Node() {};
         };
 

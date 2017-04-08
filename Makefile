@@ -7,10 +7,12 @@ LIBS = -lpthread
 LDFLAGS = ${LIBS} 
 
 SRCS = ssfi.cpp
-OBJS = $(patsubst %.c,%.o, $(SRCS))
+OBJS = $(patsubst %.cpp,%.o, $(SRCS))
+
+all: ssfi
 
 clean:
-	rm $(OBJS)
+	rm $(OBJS) ssfi
 debug:
 	CXXFLAGS := $(CXXFLAGS) $(DEBUG)
 	make ssfi-debug
