@@ -6,7 +6,7 @@ RELEASE = -O3 -DNDEBUG
 LIBS = -lpthread
 LDFLAGS = ${LIBS} 
 
-SRCS = ssfi.cpp
+SRCS = ssfi.cpp hashcounter.cpp
 OBJS = $(patsubst %.cpp,%.o, $(SRCS))
 
 all: ssfi

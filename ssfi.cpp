@@ -23,13 +23,15 @@
 #include <ftw.h>
 #include <getopt.h> // For getopt_long
 
-#include "bdqueue.h" // For lock-based bounded queue
+#include "bdqueue.h"     // For lock-based bounded queue
+#include "hashcounter.h" // for cuckooHashCounter
 
 using namespace std;
 using kjp::unboundedQueue;
 
 int debug = false;
 unboundedQueue<string> bq;
+cuckooHashCounter<string> hc;
 mutex donemtx;
 condition_variable donecv;
 
