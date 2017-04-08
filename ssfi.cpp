@@ -1,0 +1,138 @@
+//
+// ssfi - Super Simple File Indexer
+// Author: Kenneth Platz @kjplatz 
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif // _GNU_SOURCE
+#include <atomic>
+#include <cerrno>
+#include <condition_variable>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <mutex>
+#include <thread>
+
+#include <ftw.h>
+#include <getopt.h> // For getopt_long
+
+#include "bdqueue.h" // For lock-based bounded queue
+
+using namespace std;
+using kjp::unboundedQueue;
+
+int debug = false;
+unboundedQueue<string> bq;
+mutex donemtx;
+condition_variable donecv;
+
+int worker( int mytid, unboundedQueue<string>* q, atomic<int>* dc );
+int process_file(const char *name, const struct stat *status, int type, struct FTW *fb);
+
+void display_help( const char* fname, ostream& os ) {
+    os << "Usage: " << basename(fname) << " -N <num> [-d] [-h]" << endl
+       << "     -N <num> : Indicate number of worker threads" << endl
+       << "     -h       : Display this help and exit" << endl
+       << "     -d       : Enable debugging" << endl;
+}
+int main( int argc, char** argv ) {
+    int help = false;
+    int c;
+    int option_index = 0;
+    int nthreads = 0;
+    atomic<int> donecount(0);
+
+    struct option long_options[] = {
+        { "nthreads", required_argument, 0, 'N' },
+        { "debug", no_argument, &debug, 'd' },
+        { "help", no_argument, 0, 'h' },
+        { 0, 0, 0, 0 } };
+
+    do {
+        c = getopt_long( argc, argv, "N:dh", long_options, &option_index );
+   
+        switch(c) {
+        case 'h' : display_help(argv[0], cout); return 0;
+        case 'd' : debug = true; break;
+        case 'N' : nthreads = atoi( optarg ); break;
+        case 0:
+        case -1:   break;
+ 
+        default : display_help(argv[0], cerr);
+                  return 1;
+        }
+
+    } while ( c >= 0 );
+
+    debug && cout << "Debugging enabled." << endl;
+    debug && cout << "Number of threads: " << nthreads << endl;
+
+    if ( nthreads <= 0 ) {
+        cerr << "Error: Number of threads must be specified and greater than zero" << endl;
+        return 1;
+    }
+
+
+    // hashTable<string,int> ht;         // Hash table for handling entries
+
+    for( int i=0; i<nthreads; ++i ) {
+        // thread t = new thread( worker, bq, ht, done );
+        thread* t = new thread( worker, (i+1), &bq, &donecount );
+        t->detach(); 
+    }
+
+    for( ; optind < argc; ++optind ) {
+        if ( nftw( argv[optind], process_file, 32, 0 ) < 0 ) {
+            cerr << "Error processing directory " << argv[optind] << ": "
+                 << strerror( errno ) << endl;
+        }
+    }
+
+    // Terminal value, let each worker thread know it's done
+    for( int i=0; i<nthreads; ++i ) {
+        bq.enq( string{""} );
+    }
+
+    // Sleep until everyone is done.
+    // No need to busy-wait here
+    while( donecount.load() < nthreads ) {
+        unique_lock<mutex> lg( donemtx );
+        donecv.wait( lg );
+    }
+   
+    return 0;
+}
+
+int process_file(const char *name, const struct stat *status, int type, struct FTW *fb) {
+    if ( type != FTW_F ) return 0;
+
+    int l = strlen(name);
+    if ( l < 4 ) {
+        // debug && cout << name << ": too short, skipping" << endl; 
+        return 0;
+    }
+    if ( strcasecmp( name + l - 4, ".txt" ) != 0 ) {
+        // debug && cout << name << ": does not end in .txt" << endl;
+        return 0;
+    }
+    debug && cout << "Processing: " << name << endl;
+    bq.enq( string{name} ); 
+    
+    return 0;
+}
+
+//int worker( int mytid, unboundedQueue<string>* q, atomic<int>* dc );
+int worker( int mytid, unboundedQueue<string>* q, atomic<int>* done ) {
+    string s;
+    debug && cout << "[" << mytid << "]" << " Starting..." << endl;
+    s = q->deq();
+    while( s.length() > 0 ) {
+        debug && cout << "[" << mytid << "]" << " Processing " << s << endl;
+        
+        s = q->deq();
+    }
+    done->fetch_add(1);
+    unique_lock<mutex> dlg(donemtx);        
+    donecv.notify_all();
+}
