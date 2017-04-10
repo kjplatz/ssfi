@@ -8,9 +8,11 @@
 
 #include <chrono>
 #include <cmath>
+#include <iostream>
 #include <mutex>
 #include <random>
 #include <string>
+#include <sstream>
 #include <utility> // For std::pair
 #include <vector> 
 
@@ -26,7 +28,7 @@ private:
     // Initial size of hash table
     static constexpr int DEFAULT_SIZE=HASH_DEFAULT_SIZE; 
     #else
-    static constexpr int DEFAULT_SIZE=32;             // Initial size of hash table
+    static constexpr int DEFAULT_SIZE=8;             // Initial size of hash table
     #endif
 
     #ifdef HASH_DEFAULT_MC
@@ -57,6 +59,25 @@ private:
                 *it = nullptr;
             }
         }
+
+        std::string to_string(const element* sentinel) const {
+            std::ostringstream os;
+            for( unsigned i=0; i<table.size(); ++i ) {
+                if ( table.at(i) && table.at(i) != sentinel ) {
+                    os << i << "    ";
+                    os << table.at(i)->first << ":" << table.at(i)->second << " :: ";
+                    os << std::endl;
+                } 
+            }
+            return os.str();
+        }
+        int nelem(const element* sentinel) const {
+            int i=0;
+            for( auto it : table ) {
+                if ( it != nullptr && it != sentinel ) ++i;
+            }
+            return i;
+        }
     };
 
 
@@ -66,14 +87,16 @@ private:
     std::default_random_engine generator;
     int hash_func( const K&, int ha, int hp ) const;
 
-    config* resize_helper( std::shared_ptr<config> current, int newsz ) {
-        config* newcfg = new config(newsz, generator);
+    std::shared_ptr<config> resize_helper( std::shared_ptr<config> current, int newsz ) {
+        std::shared_ptr<config> newcfg = std::make_shared<config>(newsz, generator);
+
+        debug && std::cout << "Resize helper.  New size = " << newsz << std::endl;
 
         // Since this newcfg is private to our thread (for now),
         // we don't need to worry about locking anything when we insert
         for( auto it : current->table ) {
             if ( it == nullptr || it == &sentinel ) continue;
-            int slot = hash_func( it->first, current->ha, current->hp );
+            int slot = hash_func( it->first, newcfg->ha, newcfg->hp );
             int i;
             for( i=0; i<maxcollisions; ++i ) {
                 slot = (slot + (i * i)) % newcfg->table.size();
@@ -81,13 +104,17 @@ private:
                 // There is no chance that someone deleted an entry.
                 if ( newcfg->table[slot] == nullptr ) {
                     newcfg->table[slot] = it;
-                }
+                    break;
+                } 
             }
             // Dangit.  Too many collisions.  Try increasing size by 50%
             if ( i == maxcollisions ) {
-                delete newcfg;
                 return nullptr;
             }
+        }
+        if ( debug ) {
+            std::cout << "Size of old table: " << current->nelem(&sentinel) << std::endl;
+            std::cout << "Size of new table: " << newcfg->nelem(&sentinel) << std::endl;
         }
         return newcfg;
     };
@@ -107,7 +134,7 @@ private:
             lgs.emplace_back( current->locks[i] );
         }
         if ( old->resizing ) return;
-        config* newcfg;
+        std::shared_ptr<config> newcfg;
       
         do {
             newsz *= 2;
@@ -115,7 +142,21 @@ private:
         } while( newcfg == nullptr );
        
         oldcfg = old;
-        cfg = std::shared_ptr<config>{ newcfg };
+        cfg = newcfg;
+        if ( debug ) {
+            std::cout << "<<< In resize() " << std::endl;
+            std::cout << "Size of old table: " << oldcfg->nelem(&sentinel) << std::endl;
+            std::cout << "Size of new table: " << cfg->nelem(&sentinel) << std::endl;
+
+            std::cout << "==== OLD ====" << std::endl;
+            std::cout << oldcfg->to_string(&sentinel) << std::endl;
+
+            std::cout << "==== NEW ====" << std::endl;
+            std::cout << newcfg->to_string(&sentinel) << std::endl;
+
+            std::cout << "==== CURRENT ====" << std::endl;
+            std::cout << cfg->to_string(&sentinel) << std::endl;
+        }
     };
 public:
     stripedhashcounter( int size=DEFAULT_SIZE, int mc=DEFAULT_MC ) :
@@ -163,18 +204,24 @@ public:
 
                 // Is the slot free?
                 if ( e == nullptr || e == &sentinel ) {
+                    debug && std::cout << "Inserting [" << key << "] at slot " << slot << std::endl;;
                     current->table.at( slot ) = new element( key, 1 );
                     return 1;
-                }
+                } 
 
                 // Does it match our key?  If so, go ahead and increment
                 if ( e->first == key ) {
+                    debug && std::cout << "Found [" << key << "] at slot " << slot << ".  Incrementing from " << e->second << " to " << (e->second + 1) << std::endl;
                     e->second += 1;
                     return e->second;
                 }
+
+                debug && std::cout << "Collision for [" << key << "] at slot " << slot << ".  (Found: " << e->first << ")" << std::endl;
+              
             }
             // We got maxcollisions collisions, resize the table
             resize(cfg);
+            debug && std::cout << "Had to resize for [" << key << "] will re-attempt." << std::endl;
         }
         return true;
     }
@@ -211,8 +258,7 @@ public:
     int increment( const K& key ) { return insert(key); }
 
     std::vector<element>& extract_top( int count ) {
-        std::vector<element> *heap = new std::vector<element>{ sentinel };
-        std::vector<element> ondeck{ sentinel };
+        std::vector<element> *heap = new std::vector<element>{ count, sentinel };
         std::vector<std::unique_lock<std::mutex>> lgs;
         std::shared_ptr<config> current = cfg;
 
@@ -222,31 +268,22 @@ public:
         }
 
         for( auto it : current->table ) {
-            if ( it == nullptr || it == &sentinel ) continue;
-
-            if ( it->second > ondeck.at(0).second ) {
-                heap->push_back( *it );
-                std::push_heap( heap->begin(), heap->end(), 
-                                []( const element& e1, const element& e2 ) {
-                                    return ( e1.second > e2.second );
-                                });
-                if ( heap->size() >= (unsigned long)count ) {
-                    ondeck.clear();
-                    int next = heap->begin()->second;
-                    while( heap->begin()->second == next ) {
-                        std::pop_heap( heap->begin(), heap->end(), 
-                                []( const element& e1, const element& e2 ) {
-                                    return ( e1.second > e2.second );
-                                });
-                        ondeck.push_back( heap->back() );
-                        heap->pop_back();
-                    }
-                }
-            } else if ( it->second == ondeck.at(0).second ) {
-                ondeck.emplace_back( *it );
-            }  
-        }
-        heap->insert( heap->end(), ondeck.begin(), ondeck.end() );
+            if ( it == nullptr || it == &sentinel ||
+                 it->second < heap->front().second ||
+                 (it->second == heap->front().second &&
+                  it->first > heap->front().first) ) continue;
+            std::pop_heap( heap->begin(), heap->end(), 
+                           []( const element& e1, const element& e2 ) {
+                               return ( e1.second > e2.second ) || ( e1.second == e2.second && e1.first < e2.first);
+                           });
+            heap->pop_back();
+       
+            heap->push_back( *it );
+            std::push_heap( heap->begin(), heap->end(), 
+                            []( const element& e1, const element& e2 ) {
+                               return ( e1.second > e2.second ) || ( e1.second == e2.second && e1.first < e2.first);
+                            });
+        } 
         std::sort( heap->begin(), heap->end(), 
                    [](const element& a, const element& b) { 
                        if ( a.second == b.second ) return a.first < b.first;

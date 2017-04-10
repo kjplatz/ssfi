@@ -1,0 +1,210 @@
+Debugging enabled.
+Number of threads: 1
+Number of words: 10
+[1] Starting...
+Processing: test/hello2.txt
+Processing: test/comp.txt
+Processing: test/hello.txt
+[1] Processing test/hello2.txt
+[1] Got line: Hello WORLD!
+[1] Got word: hello[1]
+[1] Got word: world[1]
+[1] Processing test/comp.txt
+[1] Got line: Linear on the number of elements inserted (copy/move construction) plus the number of elements after position (moving).
+[1] Got word: linear[1]
+[1] Got word: on[1]
+[1] Got word: the[1]
+[1] Got word: number[1]
+Resize helper.  New size = 16
+Size of old table: 6
+Size of new table: 6
+<<< In resize() 
+Size of old table: 6
+Size of new table: 6
+[1] Got word: of[1]
+[1] Got word: elements[1]
+[1] Got word: inserted[1]
+[1] Got word: copy[1]
+[1] Got word: move[1]
+[1] Got word: construction[1]
+[1] Got word: plus[1]
+Resize helper.  New size = 32
+Size of old table: 13
+Size of new table: 13
+<<< In resize() 
+Size of old table: 13
+Size of new table: 13
+[1] Got word: the[1]
+[1] Got word: number[1]
+[1] Got word: of[1]
+[1] Got word: elements[1]
+[1] Got word: after[1]
+[1] Got word: position[1]
+[1] Got word: moving[1]
+[1] Got line: 
+[1] Got line: Additionally, if InputIterator in the range insert (3) is not at least of a forward iterator category (i.e., just an input iterator) the new capacity cannot be determined beforehand and the insertion incurs in additional logarithmic complexity in size (reallocations).
+[1] Got word: additionally[1]
+[1] Got word: if[1]
+[1] Got word: inputiterator[1]
+[1] Got word: in[1]
+Key already here.  Incrementing from 1 to 2
+[1] Got word: the[2]
+[1] Got word: range[1]
+[1] Got word: insert[1]
+[1] Got word: 3[1]
+Resize helper.  New size = 64
+Size of old table: 27
+Size of new table: 27
+<<< In resize() 
+Size of old table: 27
+Size of new table: 27
+[1] Got word: is[1]
+[1] Got word: not[1]
+[1] Got word: at[1]
+[1] Got word: least[1]
+[1] Got word: of[1]
+[1] Got word: a[1]
+[1] Got word: forward[1]
+[1] Got word: iterator[1]
+[1] Got word: category[1]
+[1] Got word: i[1]
+[1] Got word: e[1]
+[1] Got word: just[1]
+[1] Got word: an[1]
+[1] Got word: input[1]
+Key already here.  Incrementing from 1 to 2
+[1] Got word: iterator[2]
+Resize helper.  New size = 128
+Size of old table: 41
+Size of new table: 41
+<<< In resize() 
+Size of old table: 41
+Size of new table: 41
+[1] Got word: the[1]
+[1] Got word: new[1]
+[1] Got word: capacity[1]
+[1] Got word: cannot[1]
+[1] Got word: be[1]
+[1] Got word: determined[1]
+[1] Got word: beforehand[1]
+[1] Got word: and[1]
+Key already here.  Incrementing from 1 to 2
+[1] Got word: the[2]
+[1] Got word: insertion[1]
+[1] Got word: incurs[1]
+[1] Got word: in[1]
+[1] Got word: additional[1]
+[1] Got word: logarithmic[1]
+[1] Got word: complexity[1]
+Key already here.  Incrementing from 1 to 2
+[1] Got word: in[2]
+[1] Got word: size[1]
+[1] Got word: reallocations[1]
+[1] Got line: 
+[1] Got line: If a reallocation happens, the reallocation is itself up to linear in the entire size at the moment of the reallocation.
+[1] Got word: if[1]
+Key already here.  Incrementing from 1 to 2
+[1] Got word: a[2]
+[1] Got word: reallocation[1]
+[1] Got word: happens[1]
+Key already here.  Incrementing from 2 to 3
+[1] Got word: the[3]
+Key already here.  Incrementing from 1 to 2
+[1] Got word: reallocation[2]
+[1] Got word: is[1]
+[1] Got word: itself[1]
+[1] Got word: up[1]
+[1] Got word: to[1]
+[1] Got word: linear[1]
+Key already here.  Incrementing from 2 to 3
+[1] Got word: in[3]
+Key already here.  Incrementing from 3 to 4
+[1] Got word: the[4]
+[1] Got word: entire[1]
+Key already here.  Incrementing from 1 to 2
+[1] Got word: size[2]
+[1] Got word: at[1]
+Key already here.  Incrementing from 4 to 5
+[1] Got word: the[5]
+[1] Got word: moment[1]
+[1] Got word: of[1]
+Key already here.  Incrementing from 5 to 6
+[1] Got word: the[6]
+Key already here.  Incrementing from 2 to 3
+[1] Got word: reallocation[3]
+[1] Processing test/hello.txt
+[1] Got line: Hello, world!
+[1] Got word: hello[1]
+[1] Got word: world[1]
+[1] Got line: 
+the : 6
+in : 3
+reallocation : 3
+a : 2
+iterator : 2
+size : 2
+the : 2
+3 : 1
+additional : 1
+additionally : 1
+after : 1
+an : 1
+and : 1
+at : 1
+at : 1
+be : 1
+beforehand : 1
+cannot : 1
+capacity : 1
+category : 1
+complexity : 1
+construction : 1
+copy : 1
+determined : 1
+e : 1
+elements : 1
+elements : 1
+entire : 1
+forward : 1
+happens : 1
+hello : 1
+hello : 1
+i : 1
+if : 1
+if : 1
+in : 1
+incurs : 1
+input : 1
+inputiterator : 1
+insert : 1
+inserted : 1
+insertion : 1
+is : 1
+is : 1
+itself : 1
+just : 1
+least : 1
+linear : 1
+linear : 1
+logarithmic : 1
+moment : 1
+move : 1
+moving : 1
+new : 1
+not : 1
+number : 1
+number : 1
+of : 1
+of : 1
+of : 1
+of : 1
+on : 1
+plus : 1
+position : 1
+range : 1
+reallocations : 1
+the : 1
+to : 1
+up : 1
+world : 1
+world : 1

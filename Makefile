@@ -1,7 +1,7 @@
 CXX = g++
-CXXFLAGS = --std=gnu++11 -Wall
-INCLUDES = -I${PWD}/include
 DEBUG = -g3 -O0
+CXXFLAGS = --std=gnu++11 -Wall $(DEBUG)
+INCLUDES = -I${PWD}/include
 RELEASE = -O3 -DNDEBUG
 LIBS = -lpthread
 LDFLAGS = ${LIBS} 
