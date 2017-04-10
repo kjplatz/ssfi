@@ -43,18 +43,14 @@ class stripedhashcounter {
         int ha, hb, hp;
         bool resizing;
 
-        config( int sz ) : resizing(false), table(sz, nullptr) {
-            locks.resize( sqrt(sz) + 1 );
+        config( int sz, std::default_random_engine g ) : table(sz, nullptr), locks( sqrt(sz) + 1), resizing(false) {
         }
 
         ~config() {
-            delete table;
-            delete locks;
-            for( auto it = deleted->begin(); it != deleted->end(); ++it ) {
+            for( auto it = deleted.begin(); it != deleted.end(); ++it ) {
                 delete *it;
                 *it = nullptr;
             }
-            delete deleted;
         }
     };
 
@@ -62,20 +58,23 @@ class stripedhashcounter {
     std::shared_ptr<config> cfg, old_cfg;
 
     int maxcollisions;
+    std::default_random_engine generator;
     int hash_func( const K&, int ha, int hp ) const;
 
 public:
     stripedhashcounter( int size=DEFAULT_SIZE, int mc=DEFAULT_MC ) :
-        cfg(new config(size)), old_cfg(nullptr), maxcollisions(mc) {
+        old_cfg(nullptr), maxcollisions(mc) {
+        generator.seed( std::chrono::system_clock::now().time_since_epoch().count() );
+        cfg = std::make_shared<config>( size, generator );
     }
 
     int contains( const K& key ) const {
         std::shared_ptr<config> current = cfg;
 
-        int slot = hash_func( key, cfg->ha, cfg->hp );
+        int slot = hash_func( key, current->ha, current->hp );
         for( int i=0; i<maxcollisions; ++i ) {
-            slot = (slot + i * i) % cfg->table->size();
-            element *e = current->table->at(slot);
+            slot = (slot + i * i) % current->table.size();
+            element *e = current->table.at(slot);
             if ( e == nullptr ) return 0;
             if ( e->first == key ) {
                 return e->second.load();
@@ -95,7 +94,6 @@ public:
                 slot = (slot + i * i) % cfg->table->size();
                 element *e = current->table->at(slot);
                 if ( e == nullptr || e == &sentinel ) {
-                    std::lock_guard<std::mutex> lg( 
                 }
             }
         }
