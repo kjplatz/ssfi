@@ -37,16 +37,14 @@ class stripedhashcounter {
 
     class config {
     public:
-        std::vector<element*> *table;
-        std::vector<element*> *deleted;
-        std::vector<std::mutex> *locks;
+        std::vector<element*> table;
+        std::vector<element*> deleted;
+        std::vector<std::mutex> locks;
         int ha, hb, hp;
         bool resizing;
 
-        config( int sz ) : resizing(false) {
-            table = new std::vector<element*>( sz, nullptr );
-            deleted = new std::vector<element*>;
-            locks = new std::vector<std::mutex>( sqrt(sz) + 1 );
+        config( int sz ) : resizing(false), table(sz, nullptr) {
+            locks.resize( sqrt(sz) + 1 );
         }
 
         ~config() {
@@ -74,19 +72,33 @@ public:
     int contains( const K& key ) const {
         std::shared_ptr<config> current = cfg;
 
-        int slot = hash_func(key);
+        int slot = hash_func( key, cfg->ha, cfg->hp );
         for( int i=0; i<maxcollisions; ++i ) {
             slot = (slot + i * i) % cfg->table->size();
-            if ( cfg->table->at(slot) == nullptr ||
-                 cfg->table->at(slot) == &sentinel ) return 0;
-            if ( cfg->table->at(slot)->first == key ) {
-                return cfg->table->at(slot)->second.load();
+            element *e = current->table->at(slot);
+            if ( e == nullptr ) return 0;
+            if ( e->first == key ) {
+                return e->second.load();
             }
         }
         return 0;
     }
 
     bool insert( const K& key ) {
+        int slot;
+        // Repeat forever.
+        // In the event of concurrent resizings we may need to try over and over
+        while( true ) {
+            std::shared_ptr<config> current = cfg;
+            slot = hash_func( key, cfg->ha, cfg->hp );
+            for( int i=0; i<maxcollisions; ++i ) {
+                slot = (slot + i * i) % cfg->table->size();
+                element *e = current->table->at(slot);
+                if ( e == nullptr || e == &sentinel ) {
+                    std::lock_guard<std::mutex> lg( 
+                }
+            }
+        }
         return true;
     }
 
