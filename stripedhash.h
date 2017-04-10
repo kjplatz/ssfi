@@ -1,23 +1,29 @@
 //
 // A concurrent striped hash table
-// We use quadratic probing 
+// We use quadratic probing here, since it's fast and generally gives good performance
 //
 
 #ifndef __STRIPED_HASH_H__
 #define __STRIPED_HASH_H__
 
+#include <chrono>
 #include <cmath>
 #include <mutex>
+#include <random>
+#include <string>
 #include <utility> // For std::pair
 #include <vector> 
 
-template <typename K, typename D> 
-class stripedhash {
+
+extern int debug;
+
+template <typename K>
+class stripedhashcounter {
     #ifdef HASH_DEFAULT_SIZE
     // Initial size of hash table
     static constexpr int DEFAULT_SIZE=HASH_DEFAULT_SIZE; 
     #else
-    static constexpr int DEFAULT_SIZE=8;
+    static constexpr int DEFAULT_SIZE=8;             // Initial size of hash table
     #endif
 
     #ifdef HASH_DEFAULT_MC
@@ -26,29 +32,83 @@ class stripedhash {
     static constexpr int DEFAULT_MC=8;
     #endif
 
-    typedef std::pair<K,D> element;
+    typedef std::pair<K,int> element;
+    element sentinel;                // Value of this guy doesn't matter, just his address...
 
-    std::vector<element*>   table;
-    std::vector<std::mutex> locks;
-    int hash_func( const K&, int h );
-    const K sentinel;
+    class config {
+    public:
+        std::vector<element*> *table;
+        std::vector<element*> *deleted;
+        std::vector<std::mutex> *locks;
+        int ha, hb, hp;
+        bool resizing;
+
+        config( int sz ) : resizing(false) {
+            table = new std::vector<element*>( sz, nullptr );
+            deleted = new std::vector<element*>;
+            locks = new std::vector<std::mutex>( sqrt(sz) + 1 );
+        }
+
+        ~config() {
+            delete table;
+            delete locks;
+            for( auto it = deleted->begin(); it != deleted->end(); ++it ) {
+                delete *it;
+                *it = nullptr;
+            }
+            delete deleted;
+        }
+    };
+
+
+    std::shared_ptr<config> cfg, old_cfg;
+
+    int maxcollisions;
+    int hash_func( const K&, int ha, int hp ) const;
+
 public:
-    stripedhash( const K& s, int size=DEFAULT_SIZE, int mc=DEFAULT_MC, int g=DEFAULT_GRANULARITY ) :
-        table(nullptr, size), sentinel(s), maxcollisions(mc) {
-        locks.resize( sqrt(size) + 1 );
+    stripedhashcounter( int size=DEFAULT_SIZE, int mc=DEFAULT_MC ) :
+        cfg(new config(size)), old_cfg(nullptr), maxcollisions(mc) {
     }
 
-    D contains( const K& key ) const {
+    int contains( const K& key ) const {
+        std::shared_ptr<config> current = cfg;
+
+        int slot = hash_func(key);
+        for( int i=0; i<maxcollisions; ++i ) {
+            slot = (slot + i * i) % cfg->table->size();
+            if ( cfg->table->at(slot) == nullptr ||
+                 cfg->table->at(slot) == &sentinel ) return 0;
+            if ( cfg->table->at(slot)->first == key ) {
+                return cfg->table->at(slot)->second.load();
+            }
+        }
+        return 0;
     }
 
-    int insert( const K& key, const D& data ) {
+    bool insert( const K& key ) {
+        return true;
     }
 
     int remove( const K& key ) {
+        return true;
     }
 
-    D& operator[]( const K& key ) {
+    int increment( const K& key ) {
+        return 0;
     }
+};
+
+template <>
+int stripedhashcounter<int>::hash_func( const int& i, int ha, int hp ) const {
+    return ha * i % hp;
+}
+template <>
+int stripedhashcounter<std::string>::hash_func( const std::string& s, int ha, int hp ) const {
+    int ret = 0;
+    for ( const auto it : s ) {
+        ret = ( ret * ha + it ) % hp;
+    }
+    return ret;
 }
 #endif
-
