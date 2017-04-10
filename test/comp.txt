@@ -1,0 +1,5 @@
+Linear on the number of elements inserted (copy/move construction) plus the number of elements after position (moving).
+
+Additionally, if InputIterator in the range insert (3) is not at least of a forward iterator category (i.e., just an input iterator) the new capacity cannot be determined beforehand and the insertion incurs in additional logarithmic complexity in size (reallocations).
+
+If a reallocation happens, the reallocation is itself up to linear in the entire size at the moment of the reallocation.

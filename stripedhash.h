@@ -19,6 +19,9 @@ extern int debug;
 
 template <typename K>
 class stripedhashcounter {
+public:
+    typedef std::pair<K,int> element;
+private:
     #ifdef HASH_DEFAULT_SIZE
     // Initial size of hash table
     static constexpr int DEFAULT_SIZE=HASH_DEFAULT_SIZE; 
@@ -32,7 +35,6 @@ class stripedhashcounter {
     static constexpr int DEFAULT_MC=8;
     #endif
 
-    typedef std::pair<K,int> element;
     element sentinel;                // Value of this guy doesn't matter, just his address...
 
     class config {
@@ -207,6 +209,53 @@ public:
     }
 
     int increment( const K& key ) { return insert(key); }
+
+    std::vector<element>& extract_top( int count ) {
+        std::vector<element> *heap = new std::vector<element>{ sentinel };
+        std::vector<element> ondeck{ sentinel };
+        std::vector<std::unique_lock<std::mutex>> lgs;
+        std::shared_ptr<config> current = cfg;
+
+        // Need exclusive access...
+        for( unsigned i=0; i<current->locks.size(); ++i ) {
+            lgs.emplace_back( current->locks[i] );
+        }
+
+        for( auto it : current->table ) {
+            if ( it == nullptr || it == &sentinel ) continue;
+
+            if ( it->second > ondeck.at(0).second ) {
+                heap->push_back( *it );
+                std::push_heap( heap->begin(), heap->end(), 
+                                []( const element& e1, const element& e2 ) {
+                                    return ( e1.second > e2.second );
+                                });
+                if ( heap->size() >= (unsigned long)count ) {
+                    ondeck.clear();
+                    int next = heap->begin()->second;
+                    while( heap->begin()->second == next ) {
+                        std::pop_heap( heap->begin(), heap->end(), 
+                                []( const element& e1, const element& e2 ) {
+                                    return ( e1.second > e2.second );
+                                });
+                        ondeck.push_back( heap->back() );
+                        heap->pop_back();
+                    }
+                }
+            } else if ( it->second == ondeck.at(0).second ) {
+                ondeck.emplace_back( *it );
+            }  
+        }
+        heap->insert( heap->end(), ondeck.begin(), ondeck.end() );
+        std::sort( heap->begin(), heap->end(), 
+                   [](const element& a, const element& b) { 
+                       if ( a.second == b.second ) return a.first < b.first;
+                       return a.second > b.second; 
+                   } 
+                 );
+        return *heap;
+
+    }
 };
 
 template <>

@@ -42,6 +42,7 @@ void worker_process_file( int mytid, const string& name );
 void display_help( const char* fname, ostream& os ) {
     os << "Usage: " << basename(fname) << " -N <num> [-d] [-h]" << endl
        << "     -N <num> : Indicate number of worker threads" << endl
+       << "     -c <num> : Extract the top <num> frequently occurring words (default:10)" << endl
        << "     -h       : Display this help and exit" << endl
        << "     -d       : Enable debugging" << endl;
 }
@@ -49,16 +50,18 @@ int main( int argc, char** argv ) {
     int c;
     int option_index = 0;
     int nthreads = 0;
+    int count = 10;
     atomic<int> donecount(0);
 
     struct option long_options[] = {
-        { "nthreads", required_argument, 0, 'N' },
         { "debug", no_argument, &debug, 'd' },
+        { "count", required_argument, &count, 'c' },
+        { "nthreads", required_argument, 0, 'N' },
         { "help", no_argument, 0, 'h' },
         { 0, 0, 0, 0 } };
 
     do {
-        c = getopt_long( argc, argv, "N:dh", long_options, &option_index );
+        c = getopt_long( argc, argv, "N:dhc:", long_options, &option_index );
    
         switch(c) {
         case 'h' : display_help(argv[0], cout); return 0;
@@ -75,6 +78,7 @@ int main( int argc, char** argv ) {
 
     debug && cout << "Debugging enabled." << endl;
     debug && cout << "Number of threads: " << nthreads << endl;
+    debug && cout << "Number of words: " << count << endl;
 
     if ( nthreads <= 0 ) {
         cerr << "Error: Number of threads must be specified and greater than zero" << endl;
@@ -109,6 +113,10 @@ int main( int argc, char** argv ) {
         donecv.wait( lg );
     }
    
+    std::vector<stripedhashcounter<string>::element> entries = hc.extract_top( count );
+    for( auto it : entries ) {
+        cout << it.first << " : " << it.second << endl;
+    }
     return 0;
 }
 
