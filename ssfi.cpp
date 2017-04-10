@@ -167,7 +167,8 @@ void worker_process_file( int mytid, const string& name ) {
         while( rit != re_end ) {
             string word(std::move(rit->str()));
             transform( word.begin(), word.end(), word.begin(), ::tolower );
-            debug && cout << "[" << mytid << "] Got word: " << word << endl;
+            int count = hc.insert( word );
+            debug && cout << "[" << mytid << "] Got word: " << word << "[" << count << "]" << endl;
             ++rit;
         }
         // Read the next line and... go!

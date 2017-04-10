@@ -22,3 +22,5 @@ ssfi: $(OBJS)
 
 ssfi-debug: $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(LDFLAGS)
+
+ssfi.o: ssfi.cpp stripedhash.h bdqueue.h
