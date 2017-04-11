@@ -24,7 +24,7 @@
 #include <getopt.h> // For getopt_long
 
 #include "bdqueue.h"     // For lock-based bounded queue
-#include "stripedhash.h" // for cuckooHashCounter
+#include "stripedhash.h" // for striped hash counter
 
 using namespace std;
 using kjp::unboundedQueue;
@@ -37,8 +37,9 @@ unordered_map<string,int> word_map;
 void worker_process_file( int mytid, const string& name, unordered_map<string,int>* );
 void print_results( const unordered_map<string,int>&, unsigned );
 #else
-stripedhashcounter<string> hc;
+stripedhashcounter<string> word_map;
 void worker_process_file( int mytid, const string& name );
+void print_results( unsigned );
 #endif
 mutex donemtx;
 condition_variable donecv;
@@ -67,6 +68,7 @@ int main( int argc, char** argv ) {
         { "help", no_argument, 0, 'h' },
         { 0, 0, 0, 0 } };
 
+    // Process command-line options
     do {
         c = getopt_long( argc, argv, "N:dhc:", long_options, &option_index );
    
@@ -92,8 +94,6 @@ int main( int argc, char** argv ) {
         return 1;
     }
 
-
-    // hashTable<string,int> ht;         // Hash table for handling entries
 
     for( int i=0; i<nthreads; ++i ) {
         // thread t = new thread( worker, bq, ht, done );
@@ -122,6 +122,8 @@ int main( int argc, char** argv ) {
    
 #ifdef USE_MAP
     print_results( word_map, count );
+#else
+    print_results( count );
 #endif
     return 0;
 }
@@ -138,7 +140,7 @@ int nftw_process_file(const char *name, const struct stat *status, int type, str
     debug && cout << "Processing: " << name << endl;
     bq.enq( string{name} ); 
     
-    return 1;
+    return 0;
 }
 
 //int worker( int mytid, unboundedQueue<string>* q, atomic<int>* dc );
@@ -182,6 +184,7 @@ void worker_process_file( int mytid, const string& name, unordered_map<string,in
 #else
 void worker_process_file( int mytid, const string& name ) {
 #endif
+    // Definition of a word == one or more alphanumeric characters
     static const regex re_word( "[[:alnum:]]+" );
     static const regex_iterator<string::iterator> re_end;
 
@@ -194,19 +197,27 @@ void worker_process_file( int mytid, const string& name ) {
     }
 
     string line;
-    // Prime the loop
+    // Prime the loop with the first line from the file
     getline( infile, line );
     while( infile.good() ) {
         int count;
-        debug && cout << "[" << mytid << "] Got line: " << line << endl;
+        // debug && cout << "[" << mytid << "] Got line: " << line << endl;
+
+        // Create a regex iterator to extract words
         regex_iterator<string::iterator> rit( line.begin(), line.end(), re_word );
         while( rit != re_end ) {
             string word(std::move(rit->str()));
+            // Convert word to lowercase
             transform( word.begin(), word.end(), word.begin(), ::tolower );
-            debug && cout << "[" << mytid << "] Got word: " << word << endl;
+            // debug && cout << "[" << mytid << "] Got word: " << word << endl;
+#ifdef USE_MAP
+            // Increment word count
             count = (*my_map)[word] + 1;
             (*my_map)[word]=count;
-            debug && cout << "[" << mytid << "] Got word: " << word << " : [" << count << "]" << endl;
+#else
+            count = word_map.increment(word);
+#endif
+            // debug && cout << "[" << mytid << "] Got word: " << word << " : [" << count << "]" << endl;
             ++rit;
         }
         // Read the next line and... go!
@@ -227,6 +238,7 @@ int displaysort( pair<string,int> a, pair<string,int> b ) {
            (a.second == b.second && a.first < b.first );
 }
 
+#ifdef USE_MAP
 void print_results( const unordered_map<string, int>& words, unsigned count ) {
     vector<pair<string,int>> vec;
     vec.push_back( make_pair("", 0) );
@@ -245,6 +257,20 @@ void print_results( const unordered_map<string, int>& words, unsigned count ) {
         }
         vec.push_back( it );
         push_heap( vec.begin(), vec.end(), pairmore);
+    }
+#else
+void print_results( unsigned count ) {
+    // vector<stripedhashcounter<string>::element> vec = word_map.get_top(count);
+    vector<pair<string,int>> vec = word_map.get_top(count);
+    sort( vec.begin(), vec.end(), displaysort );
+#endif
+    if ( debug ) {
+        cout << "Results from heap..." << endl;
+        for( auto it : vec ) {
+            if ( !it.second ) continue;
+            cout << it.first << " : " << it.second << endl;
+        }
+        cout << "Results after sorting..." << endl;
     }
 
     sort( vec.begin(), vec.end(), displaysort );
