@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = --std=gnu++11 -Wall
+CXXFLAGS = --std=gnu++11 -Wall -g3 -O0 -DUSE_MAP
 INCLUDES = -I${PWD}/include
 DEBUG = -g3 -O0
 RELEASE = -O3 -DNDEBUG

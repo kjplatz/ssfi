@@ -31,17 +31,25 @@ using kjp::unboundedQueue;
 
 int debug = false;
 unboundedQueue<string> bq;
+#ifdef USE_MAP
+#include <unordered_map>
+unordered_map<string,int> word_map;
+void worker_process_file( int mytid, const string& name, unordered_map<string,int>* );
+void print_results( const unordered_map<string,int>&, unsigned );
+#else
 stripedhashcounter<string> hc;
+void worker_process_file( int mytid, const string& name );
+#endif
 mutex donemtx;
 condition_variable donecv;
 
 void worker( int mytid, unboundedQueue<string>* q, atomic<int>* dc );
-int ntfw_process_file(const char *name, const struct stat *status, int type, struct FTW *fb);
-void worker_process_file( int mytid, const string& name );
+int nftw_process_file(const char *name, const struct stat *status, int type, struct FTW *fb);
 
 void display_help( const char* fname, ostream& os ) {
     os << "Usage: " << basename(fname) << " -N <num> [-d] [-h]" << endl
        << "     -N <num> : Indicate number of worker threads" << endl
+       << "     -c <num> : Number of entries to print (default 10)" << endl
        << "     -h       : Display this help and exit" << endl
        << "     -d       : Enable debugging" << endl;
 }
@@ -49,21 +57,24 @@ int main( int argc, char** argv ) {
     int c;
     int option_index = 0;
     int nthreads = 0;
+    int count = 10;
     atomic<int> donecount(0);
 
     struct option long_options[] = {
         { "nthreads", required_argument, 0, 'N' },
+        { "count" , required_argument, 0, 'c' },
         { "debug", no_argument, &debug, 'd' },
         { "help", no_argument, 0, 'h' },
         { 0, 0, 0, 0 } };
 
     do {
-        c = getopt_long( argc, argv, "N:dh", long_options, &option_index );
+        c = getopt_long( argc, argv, "N:dhc:", long_options, &option_index );
    
         switch(c) {
         case 'h' : display_help(argv[0], cout); return 0;
         case 'd' : debug = true; break;
         case 'N' : nthreads = atoi( optarg ); break;
+        case 'c' : count = atoi( optarg ); break;
         case 0:
         case -1:   break;
  
@@ -91,7 +102,7 @@ int main( int argc, char** argv ) {
     }
 
     for( ; optind < argc; ++optind ) {
-        if ( nftw( argv[optind], ntfw_process_file, 32, 0 ) < 0 ) {
+        if ( nftw( argv[optind], nftw_process_file, 32, 0 ) < 0 ) {
             cerr << "Error processing directory " << argv[optind] << ": "
                  << strerror( errno ) << endl;
         }
@@ -109,44 +120,68 @@ int main( int argc, char** argv ) {
         donecv.wait( lg );
     }
    
+#ifdef USE_MAP
+    print_results( word_map, count );
+#endif
     return 0;
 }
 
-int ntfw_process_file(const char *name, const struct stat *status, int type, struct FTW *fb) {
+int nftw_process_file(const char *name, const struct stat *status, int type, struct FTW *fb) {
     if ( type != FTW_F ) return 0;
 
     int l = strlen(name);
-    if ( l < 4 ) {
-        // debug && cout << name << ": too short, skipping" << endl; 
-        return 0;
-    }
-    if ( strcasecmp( name + l - 4, ".txt" ) != 0 ) {
+    if ( l < 4 || 
+         strcasecmp( name + l - 4, ".txt" ) != 0 ) {
         // debug && cout << name << ": does not end in .txt" << endl;
         return 0;
     }
     debug && cout << "Processing: " << name << endl;
     bq.enq( string{name} ); 
     
-    return 0;
+    return 1;
 }
 
 //int worker( int mytid, unboundedQueue<string>* q, atomic<int>* dc );
 void worker( int mytid, unboundedQueue<string>* q, atomic<int>* done ) {
+    #ifdef USE_MAP
+    unordered_map<string,int> my_map;
+    #endif
+
     string s;
     debug && cout << "[" << mytid << "]" << " Starting..." << endl;
     s = q->deq();
     while( s.length() > 0 ) {
         debug && cout << "[" << mytid << "]" << " Processing " << s << endl;
         
+#ifdef USE_MAP
+        worker_process_file( mytid, s, &my_map );
+#else
         worker_process_file( mytid, s );
+#endif
+
         s = q->deq();
     }
-    done->fetch_add(1);
+
+    debug && cout << "[" << mytid << "] Done processing..." << endl;
     unique_lock<mutex> dlg(donemtx);        
+    
+#ifdef USE_MAP
+    for( auto it : my_map ) {
+        int count = word_map[it.first] + it.second;
+        word_map[it.first] = count;
+        debug && cout << "[" << mytid << "] Updated global map [" << it.first << "] : " << count << endl;
+    }
+#endif
+    done->fetch_add(1);
     donecv.notify_all();
+    debug && cout << "[" << mytid << "] Done processing..." << endl;
 }
 
+#ifdef USE_MAP
+void worker_process_file( int mytid, const string& name, unordered_map<string,int> *my_map ) {
+#else
 void worker_process_file( int mytid, const string& name ) {
+#endif
     static const regex re_word( "[[:alnum:]]+" );
     static const regex_iterator<string::iterator> re_end;
 
@@ -162,15 +197,59 @@ void worker_process_file( int mytid, const string& name ) {
     // Prime the loop
     getline( infile, line );
     while( infile.good() ) {
+        int count;
         debug && cout << "[" << mytid << "] Got line: " << line << endl;
         regex_iterator<string::iterator> rit( line.begin(), line.end(), re_word );
         while( rit != re_end ) {
             string word(std::move(rit->str()));
             transform( word.begin(), word.end(), word.begin(), ::tolower );
             debug && cout << "[" << mytid << "] Got word: " << word << endl;
+            count = (*my_map)[word] + 1;
+            (*my_map)[word]=count;
+            debug && cout << "[" << mytid << "] Got word: " << word << " : [" << count << "]" << endl;
             ++rit;
         }
         // Read the next line and... go!
         getline( infile, line );
+    }
+}
+
+int pairless( pair<string,int> a, pair<string,int> b ) {
+    return a.second < b.second || 
+           (a.second == b.second && a.first < b.first );
+}
+int pairmore( pair<string,int> a, pair<string,int> b ) {
+    return a.second > b.second || 
+           (a.second == b.second && a.first > b.first );
+}
+int displaysort( pair<string,int> a, pair<string,int> b ) {
+    return a.second > b.second || 
+           (a.second == b.second && a.first < b.first );
+}
+
+void print_results( const unordered_map<string, int>& words, unsigned count ) {
+    vector<pair<string,int>> vec;
+    vec.push_back( make_pair("", 0) );
+
+    for( auto it : words ) {
+        if ( vec.size() >= count && pairless( it, vec.front() ) ) {
+            debug && cout << "vec.size() = " << vec.size() 
+                          << " it = " << it.first << ":" << it.second << " -- vec.front() = " 
+                          << vec.front().first << vec.front().second << endl;
+            continue;
+        }
+
+        if ( vec.size() >= count ) {
+            pop_heap(vec.begin(), vec.end(), pairmore);
+            vec.pop_back();
+        }
+        vec.push_back( it );
+        push_heap( vec.begin(), vec.end(), pairmore);
+    }
+
+    sort( vec.begin(), vec.end(), displaysort );
+    for( auto it : vec ) {
+        if ( !it.second ) continue;
+        cout << it.first << " : " << it.second << endl;
     }
 }
