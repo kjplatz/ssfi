@@ -201,7 +201,7 @@ void worker_process_file( int mytid, const string& name ) {
     getline( infile, line );
     while( infile.good() ) {
         int count;
-        // debug && cout << "[" << mytid << "] Got line: " << line << endl;
+        debug && cout << "[" << mytid << "] Got line: " << line << endl;
 
         // Create a regex iterator to extract words
         regex_iterator<string::iterator> rit( line.begin(), line.end(), re_word );
@@ -217,7 +217,7 @@ void worker_process_file( int mytid, const string& name ) {
 #else
             count = word_map.increment(word);
 #endif
-            // debug && cout << "[" << mytid << "] Got word: " << word << " : [" << count << "]" << endl;
+            debug && cout << "[" << mytid << "] Got word: " << word << " : [" << count << "]" << endl;
             ++rit;
         }
         // Read the next line and... go!

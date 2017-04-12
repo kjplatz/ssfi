@@ -1,7 +1,7 @@
 //
 // A concurrent striped hash table
 //    This uses a finite number of locks to distribute the 
-// We use quadratic probing here, since it's fast and generally gives good performance
+//    We use an open-addressing scheme here with reader-writer locks
 //
 //
 // We can control behaviour of this with the following macros:
@@ -55,7 +55,6 @@ class stripedhashcounter {
     class config {
     public:
         std::vector<element*> table;
-        std::vector<element*> deleted;
         bool resizing;
 
         config( int sz ) : table(sz, nullptr), resizing(false) {
@@ -63,8 +62,8 @@ class stripedhashcounter {
         }
 
         ~config() {
-            for( auto it : deleted ) {
-                delete it;
+            for( auto it : table ) {
+                if ( it && it->second < 0 ) delete it;
                 it = nullptr;
             }
         }
@@ -148,8 +147,9 @@ public:
         for( int i=0; i<maxcollisions; ++i ) {
             int slot = (base + i * i) % current->table.size();
             if ( cfg->table.at(slot) == nullptr ) return 0;
+            if ( cfg->table.at(slot).second < 0 ) continue;
             if ( cfg->table.at(slot)->first == key ) {
-                return cfg->table.at(slot)->second;
+                return cfg->table.at(slot)->second > 0;
             }
         }
         return 0;
@@ -169,11 +169,13 @@ public:
                 // If so we need to start at the beginning.
                 if ( current != cfg ) goto hash_insert_retry;
                 element* e = current->table.at(slot);
-                if ( e == nullptr || e->second < 0 ) {
+                if ( e == nullptr ) {
                     current->table.at(slot) = new element{ key, 1 };
                     return 1;
                 } else if ( e->first == key ) {
-                    e->second++;
+                    // If the count is less than zero, then the element was deleted.
+                    if ( e->second < 0 ) e->second = 1;
+                    else e->second++;
                     return e->second;
                 } 
             }
