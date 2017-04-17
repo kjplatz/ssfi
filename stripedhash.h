@@ -7,7 +7,8 @@
 // We can control behaviour of this with the following macros:
 //    HASH_DEFAULT_SIZE:  Initial size of hash table
 //    HASH_DEFAULT_MC:    Default maximum number of collisions before resizing
-//    HASH_DONT_STRIPE:   Do not use lock striping.  One lock to rule the whole hash table
+//    HASH_NO_STRIPE:     Do not use lock striping.  One lock to rule the whole hash table
+//    HASH_STRIPE_SIZE:   Number of mutexes in hash stripe array
 //    
 
 #ifndef __STRIPED_HASH_H__
@@ -89,10 +90,13 @@ class stripedhashcounter {
         }
     }
 
+    // Attempt a resize.  This SHOULD succeed, but with
+    // an unfortunate hash configuration it could also fail.
     config* resize_helper( int size ) {
         config* newcfg = new config(size);
         debug && std::cout << "Config (" << size << ") created." << std::endl;
         for( auto it : cfg->table ) {
+            // If the slot is either empty or deleted, don't copy to new table
             if ( it == nullptr || it->second < 0 ) continue;
             int base = hash_func( it->first, size );
             int i;
@@ -119,7 +123,8 @@ class stripedhashcounter {
         acquire_all(l_arr);
 
         // Did someone already resize the table?
-        if ( cfg->size() != current->size() ) return;
+        if ( cfg->resizing ) return;
+        cfg->resizing = true;
 
         debug && std::cout << "Resizing..." << std::endl;
 
@@ -140,6 +145,8 @@ public:
         cfg(new config(size)), old_cfg(nullptr), maxcollisions(mc) {
     }
 
+    // Wait-free contains() method.  
+    // This is linearizable nevertheless.
     int contains( const K& key ) const {
         std::shared_ptr<config> current = cfg;
 
@@ -155,6 +162,7 @@ public:
         return 0;
     }
 
+    // Increment the count of an element in the table.
     int increment( const K& key ) {
         hash_insert_retry:
         while(true) {
@@ -167,7 +175,7 @@ public:
                 std::unique_lock<std::mutex> lock = acquire( slot );
                 // Did someone resize the table?
                 // If so we need to start at the beginning.
-                if ( current != cfg ) goto hash_insert_retry;
+                if ( current->resizing ) goto hash_insert_retry;
                 element* e = current->table.at(slot);
                 if ( e == nullptr ) {
                     current->table.at(slot) = new element{ key, 1 };
@@ -175,7 +183,10 @@ public:
                 } else if ( e->first == key ) {
                     // If the count is less than zero, then the element was deleted.
                     if ( e->second < 0 ) e->second = 1;
-                    else e->second++;
+                    // This fetch_add is required. 
+                    // Otherwise our results may be slightly off due
+                    // to relaxed memory consistency issues
+                    else atomic_fetch_add_explicit( reinterpret_cast<std::atomic<int>*>(&(e->second)), 1, std::memory_order::memory_order_seq_cst);
                     return e->second;
                 } 
             }
@@ -203,7 +214,7 @@ public:
                 std::unique_lock<std::mutex> lock = acquire( slot );
                 // Did someone resize the table?
                 // If so we need to start at the beginning.
-                if ( current != cfg ) goto hash_remove_retry;
+                if ( current->resizing ) goto hash_remove_retry;
  
                 element* e = current->table.at(slot);
                 if ( e == nullptr || e->second < 0  ) { 
@@ -232,6 +243,8 @@ public:
     }
 
 
+    // Get the top <count> elements in the table.
+    // We want a consistent set, so lock all of the mutexes
     std::vector<std::pair<K,int>> get_top( unsigned count ) {
         std::vector<std::pair<K,int>> ret{ element{"", 0} };
         std::unique_lock<std::mutex> l_arr[STRIPE_SIZE];

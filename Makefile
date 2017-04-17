@@ -14,23 +14,25 @@ all: debug
 clean:
 	rm $(OBJS) ssfi
 
-map-debug: CXXFLAGS += -DUSE_MAP
-map-debug: debug
-
 debug: CXXFLAGS += $(DEBUG)
 debug: ssfi
-
-map-release: CXXFLAGS += -DUSE_MAP
-map-release: release
 
 release: CXXFLAGS += $(RELEASE)
 release: ssfi
 
-striped-debug: CXXFLAGS += -DUSE_STRIPED
-striped-debug: striped
+map-debug: CXXFLAGS += -DUSE_MAP
+map-debug: debug
 
-striped:       CXXFLAGS += -DRELEASE
-striped: ssfi
+map-release: CXXFLAGS += -DUSE_MAP
+map-release: release
+
+
+unstriped-release: CXXFLAGS += -DHASH_NO_STRIPE
+unstriped-release: release
+
+unstriped-debug: CXXFLAGS += -DHASH_NO_STRIPE
+unstriped-debug: debug
+
 
 ssfi: $(OBJS) 
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(LDFLAGS)

@@ -101,6 +101,10 @@ int main( int argc, char** argv ) {
         t->detach(); 
     }
 
+    if ( optind >= argc ) {
+        cerr << "Error: Path not specified." << endl;
+        display_help( argv[0], cerr );
+    }
     for( ; optind < argc; ++optind ) {
         if ( nftw( argv[optind], nftw_process_file, 32, 0 ) < 0 ) {
             cerr << "Error processing directory " << argv[optind] << ": "
@@ -276,6 +280,6 @@ void print_results( unsigned count ) {
     sort( vec.begin(), vec.end(), displaysort );
     for( auto it : vec ) {
         if ( !it.second ) continue;
-        cout << it.first << " : " << it.second << endl;
+        cout << it.first << '\t' << it.second << endl;
     }
 }

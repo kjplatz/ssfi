@@ -65,6 +65,7 @@ namespace kjp {
                 }
             } // enqMtx gets released here...
 
+            // Wake dequeuers if necessary
             if ( mustWake ) {
                 std::unique_lock<std::mutex> dlg( deqMtx ); // Acquire dequeue lock
                 notemptyCV.notify_all();

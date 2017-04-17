@@ -1,0 +1,67 @@
+ssfi - Super Simple File Indexer
+    This is an implementation of the Super Simple File Indexer based upon
+    the specifications provided and reasonable assumptions I made.
+
+    The master thread parses the command-line for various options:
+        -c / --count      : specify the number of 
+        -N / --numthreads : specify the number of worker threads
+        -d / --debug      : turn on debugging (very verbose)
+        -h / --help       : output help and exit
+
+    The master thread then processes the remaining command-line arguments,
+    passing each (in turn) to nftw in order to perform a tree walk and
+    discover the files.  Upon discovering each text file (denoted by
+    a .txt (case-insensitive) suffix), the master thread enqueues the
+    filename in a lock-based blocking queue.
+    
+    Once the master thread completes the tree walks, it passes one empty
+    string per thread into the queue (as a sentinel), and then waits on
+    a condition variable until all worker threads have incremented the
+    "done" variable.
+
+    Each worker thread pulls a filename from the queue, opens it, and
+    processes the file line by line.  The worker uses the C++11 regex
+    library to parse each line for a word (as defined by the regex
+    [[:alnum:]]+).  Each word is then converted to lowercase and inserted
+    into a hash table.
+
+    I implemented three different versions of this, and each has a different
+    Makefile target.
+    
+    map-release, map-debug:
+    In the first version, I used a std::unordered_map; each thread will
+    maintain a private map.  Upon completion, each thread then will
+    update a global map, using a single std::mutex for concurrency control.
+    
+
+    unstriped-release, unstriped-debug:
+    This utilizes a concurrent hashmap that uses a single lock to control
+    concurrency.  It utilizes an open addressing scheme that relies on
+    quadratic probing.  Anytime the hashmap hits more than MAX_COLLISIONS
+    collisions, it incurs a resizing operation.
+
+    release, debug:
+    This utilizes a concurrent striped hashmap.  Instead of a single
+    mutex to control concurrency, a set of mutexes control concurrency
+    for the table.  To write to a slot in the hash table, the thread
+    acquires the lock on mutex id slot % table size.  By default, the
+    hash table contains 32 mutexes.  In order to resize the table, the
+    thread in question will need to acquire all of the locks.
+
+    Once all worker threads are complete, the master thread processes the
+    hash table, utilizing a heap to maintain the <count> most frequently
+    occurring words.
+
+    I have included a "test" directory which includes several Shakespeare
+    plays.  The anticpated output running against the "test" directory is:
+
+    the     2932
+    and     2759
+    of      2032
+    i       1873
+    to      1605
+    a       1525
+    you     1194
+    in      1122
+    my      1026
+    that    895
